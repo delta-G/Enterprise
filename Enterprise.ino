@@ -59,7 +59,7 @@ const int photonButtonPin = 2;            // photon torpedo effect will be activ
 byte photonLowFlashLevel = 35;
 byte photonHighFlashLevel = 255;
 
-// states for photonTorpedo function. 
+// states for photonTorpedo function.
 enum photonStateEnum { LOW_FLASH,
                        BETWEEN,
                        HIGH_FLASH,
@@ -70,9 +70,9 @@ unsigned int photonStateDelays[3] = { 1000, 150, 1000 };
 // ms delay between torpedo 1 fires and the torpedo fires again.
 // first number is time between volleys from start to start if you hold button long enough
 // second number is delay between torpedo 1 and torpedo 2 if you hold button long enough
-unsigned long delayBetween[2] = { 4000, 750 };
+unsigned long delayBetween = 750;
 
-// ms length of the little delay at that start. 
+// ms length of the little delay at that start.
 unsigned int startDelayPeriod = 1000;  //time in ms
 
 void setup() {
@@ -156,18 +156,23 @@ void photonTorpedoes(int tNum) {
         // lights off
         digitalWrite(photonLightPins[tNum], LOW);
 
-        // Only let torpedo 1 fire first.  So this only can run for torpedo 2 if toredo 1 is already firing.
-        // so IF tnum is 0 OR if it is 1 then toredoState[0] can't be OFF
-        if ((tNum == 0) || (photonState[0] != OFF)) {
-          if ((digitalRead(photonButtonPin) == HIGH) && (currentTime - torpedoOneLastFireTime >= delayBetween[tNum])) {
+        // Only let torpedo 1 fire if no torpedos are firing.
+        if (tNum == 0 && photonState[1] == OFF) {
+          if (digitalRead(photonButtonPin) == HIGH) {
             //Fire the torpedo!
             photonState[tNum] = LOW_FLASH;
             //and save the timestamp
             lastChange[tNum] = currentTime;
-            if (tNum == 0) {
-              // save the start of torpedo one so we can time against it
-              torpedoOneLastFireTime = currentTime;
-            }
+            // save the start of torpedo one so we can time against it
+            torpedoOneLastFireTime = currentTime;
+          }
+        } else {
+          // torpedo 2 should always fire after torpedo 1
+          if (photonState[0] != OFF && (currentTime - torpedoOneLastFireTime >= delayBetween)) {
+            //Fire the torpedo!
+            photonState[tNum] = LOW_FLASH;
+            //and save the timestamp
+            lastChange[tNum] = currentTime;
           }
         }
 
