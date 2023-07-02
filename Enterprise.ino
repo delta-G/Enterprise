@@ -67,9 +67,8 @@ enum photonStateEnum { LOW_FLASH,
 // These are the ms delays for the low flash, between time, and high flash.
 unsigned int photonStateDelays[3] = { 1000, 150, 1000 };
 
-// ms delay between torpedo 1 fires and the torpedo fires again.
-// first number is time between volleys from start to start if you hold button long enough
-// second number is delay between torpedo 1 and torpedo 2 if you hold button long enough
+// ms delay between torpedo 1 fires and torpedo 2 fires.  
+// Measured from the start of the firing on torpedo 1. 
 unsigned long delayBetween = 750;
 
 // ms length of the little delay at that start.
@@ -153,6 +152,7 @@ void photonTorpedoes(int tNum) {
       }
     case OFF:
       {
+        static boolean fire2 = false;
         // lights off
         digitalWrite(photonLightPins[tNum], LOW);
 
@@ -165,14 +165,18 @@ void photonTorpedoes(int tNum) {
             lastChange[tNum] = currentTime;
             // save the start of torpedo one so we can time against it
             torpedoOneLastFireTime = currentTime;
+            // set a flag to fire torpedo 2 later
+            fire2 = true;
           }
         } else {
           // torpedo 2 should always fire after torpedo 1
-          if (photonState[0] != OFF && (currentTime - torpedoOneLastFireTime >= delayBetween)) {
+          if (fire2 && (currentTime - torpedoOneLastFireTime >= delayBetween)) {
             //Fire the torpedo!
             photonState[tNum] = LOW_FLASH;
             //and save the timestamp
             lastChange[tNum] = currentTime;
+            // reset the flag for firing torpedo 2
+            fire2 = false;
           }
         }
 
