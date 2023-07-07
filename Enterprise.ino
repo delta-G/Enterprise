@@ -6,6 +6,8 @@
 
 // Modified by Delta_G 25 June 2023
 
+// Added this comment for git tutorial
+
 const int strobeLightPin = 13;
 const int navLightPin = 12;
 
