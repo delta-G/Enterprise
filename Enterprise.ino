@@ -6,11 +6,9 @@
 
 // Modified by Delta_G 25 June 2023
 
-// Added this comment for git tutorial
-
 const int strobeLightPin = 13;
 const int navLightPin = 12;
-
+const int bussardLightPins[4] = { 14, 15, 16, 17 };
 // Set up variables used in strobe lights
 unsigned int strobeOnPeriod = 100;
 unsigned int strobeOffPeriod = 900;
@@ -20,8 +18,8 @@ unsigned int navOnPeriod = 1000;
 unsigned int navOffPeriod = 500;
 
 // set up the pin numbers used for warp mode activation/deactivation
-const int impulseLightPin = 10;  // Pin 10 is a PWM pin, used to fade the yellow impulse LED up and down
-const int warpLightPin = 11;     // Pin 11 is a PWM pin, used to fade the blue warp LED up and down
+const int impulseLightPin = 11;  // Pin 10 is a PWM pin, used to fade the yellow impulse LED up and down
+const int warpLightPin = 10;     // Pin 11 is a PWM pin, used to fade the blue warp LED up and down
 const int warpButtonPin = 8;     // Warpmode will be activated & deactivated by a button on pin 1
 
 //  List of the states the Engines can be in.
@@ -69,8 +67,9 @@ enum photonStateEnum { LOW_FLASH,
 // These are the ms delays for the low flash, between time, and high flash.
 unsigned int photonStateDelays[3] = { 1000, 150, 1000 };
 
-// ms delay between torpedo 1 fires and torpedo 2 fires.  
-// Measured from the start of the firing on torpedo 1. 
+// ms delay between torpedo 1 fires and the torpedo fires again.
+// first number is time between volleys from start to start if you hold button long enough
+// second number is delay between torpedo 1 and torpedo 2 if you hold button long enough
 unsigned long delayBetween = 750;
 
 // ms length of the little delay at that start.
@@ -80,8 +79,8 @@ void setup() {
   pinMode(strobeLightPin, OUTPUT);
   pinMode(navLightPin, OUTPUT);
 
-  pinMode(impulseLightPin, OUTPUT);  // Impulse LED on pin 10
-  pinMode(warpLightPin, OUTPUT);     // Warp LED on pin 11
+  pinMode(impulseLightPin, OUTPUT);  // Impulse LED on pin 11
+  pinMode(warpLightPin, OUTPUT);     // Warp LED on pin 10
   pinMode(warpButtonPin, INPUT);     // Warp mode button on pin 1
 
   pinMode(photonLightPins[0], OUTPUT);  // Photon torpedo #1 LED on pin 5
@@ -101,6 +100,10 @@ void setup() {
     navLights();
     strobeLights();
   }  // end of small delay on startup
+
+  for (int i = 0; i < 4; i++) {
+    pinMode(bussardLightPins[i], OUTPUT);
+  }
 
 }  // end of setup
 
@@ -154,7 +157,6 @@ void photonTorpedoes(int tNum) {
       }
     case OFF:
       {
-        static boolean fire2 = false;
         // lights off
         digitalWrite(photonLightPins[tNum], LOW);
 
@@ -167,18 +169,14 @@ void photonTorpedoes(int tNum) {
             lastChange[tNum] = currentTime;
             // save the start of torpedo one so we can time against it
             torpedoOneLastFireTime = currentTime;
-            // set a flag to fire torpedo 2 later
-            fire2 = true;
           }
         } else {
           // torpedo 2 should always fire after torpedo 1
-          if (fire2 && (currentTime - torpedoOneLastFireTime >= delayBetween)) {
+          if (photonState[0] != OFF && (currentTime - torpedoOneLastFireTime >= delayBetween)) {
             //Fire the torpedo!
             photonState[tNum] = LOW_FLASH;
             //and save the timestamp
             lastChange[tNum] = currentTime;
-            // reset the flag for firing torpedo 2
-            fire2 = false;
           }
         }
 
@@ -254,6 +252,10 @@ void navLights() {
 }
 
 void engines() {
+  unsigned int bussardOnPeriod = 200;
+  unsigned int bussardOffPeriod = 150;
+  static unsigned long lastBussardUpdate = millis();
+  static boolean bussardOn = false;
   static unsigned long lastDebounceTime = millis();
   static byte lastDebounceState = LOW;
   static unsigned long buttonPressStart = millis();
@@ -310,6 +312,7 @@ void engines() {
       {
         digitalWrite(impulseLightPin, LOW);
         digitalWrite(warpLightPin, LOW);
+        bussardOn = false;
         break;
       }
     case IMPULSE_ENGAGE:
@@ -321,12 +324,18 @@ void engines() {
           analogWrite(impulseLightPin, impulseFadeVal);
           if (impulseFadeVal == fadeMaxValue) {
             engineState = IMPULSE;
+            bussardOn = true;
+            bussardOnPeriod = 250;
+            bussardOffPeriod = 5;
           }
         }
         break;
       }
     case IMPULSE:
       {
+        bussardOn = true;
+        bussardOnPeriod = 200;
+        bussardOffPeriod = 150;
         break;
       }
     case IMPULSE_DISENGAGE:
@@ -356,12 +365,18 @@ void engines() {
           analogWrite(warpLightPin, warpFadeVal);
           if (warpFadeVal == fadeMaxValue) {
             engineState = WARP;
+            bussardOn = true;
+            bussardOnPeriod = 250;
+            bussardOffPeriod = 5;
           }
         }
         break;
       }
     case WARP:
       {
+        bussardOn = true;
+        bussardOnPeriod = 100;
+        bussardOffPeriod = 1;
         break;
       }
     case WARP_DISENGAGE:
@@ -382,5 +397,29 @@ void engines() {
         }
         break;
       }
+  }
+  static boolean bussardLit = false;
+  static byte currentLight = 0;
+  // Cycle the Bussard Lights:
+  if (bussardOn) {
+    // If the light is lit and has been long enough to turn off
+    if ((bussardLit) && (currentTime - lastBussardUpdate >= bussardOnPeriod)) {
+      bussardLit = false;
+      digitalWrite(bussardLightPins[currentLight], LOW);
+      lastBussardUpdate = currentTime;
+    }
+    // if light is off and has been long enough to turn on
+    if ((!bussardLit) && (currentTime - lastBussardUpdate >= bussardOffPeriod)) {
+      bussardLit = true;
+      // Next light
+      currentLight = (currentLight + 1) % 4;
+      digitalWrite(bussardLightPins[currentLight], HIGH);
+      lastBussardUpdate = currentTime;
+    }
+  } else {
+    // bussard lights should be all off
+    for (int i = 0; i < 4; i++) {
+      digitalWrite(bussardLightPins[i], LOW);
+    }
   }
 }
