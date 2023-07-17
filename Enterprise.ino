@@ -9,6 +9,12 @@
 const int strobeLightPin = 13;
 const int navLightPin = 12;
 const int bussardLightPins[4] = { 14, 15, 16, 17 };
+
+// bussard on and off periods in arrays of 2.  slot 0 is off period and slot 1 is on period.
+///                                     {OFF, ON}
+unsigned int bussardImpulsePeriods[2] = { 150, 200 };
+unsigned int bussardWarpPeriods[2] = { 1, 100 };
+
 // Set up variables used in strobe lights
 unsigned int strobeOnPeriod = 100;
 unsigned int strobeOffPeriod = 900;
@@ -252,8 +258,6 @@ void navLights() {
 }
 
 void engines() {
-  unsigned int bussardOnPeriod = 200;
-  unsigned int bussardOffPeriod = 150;
   static unsigned long lastBussardUpdate = millis();
   static boolean bussardOn = false;
   static unsigned long lastDebounceTime = millis();
@@ -263,6 +267,22 @@ void engines() {
   byte newButtonState = lastButtonState;
 
   static boolean killingEngine = false;
+
+  static unsigned long lastFadeChange = millis();
+  unsigned long currentTime = millis();
+
+  static byte impulseFadeVal = 0;
+  static byte warpFadeVal = 0;
+
+
+  /// Variables for fading Bussard Lights speed
+  // Arrays of 2.  0 is off and 1 is on.
+
+  static unsigned int currentBussardPeriod[2];
+
+  unsigned long bussardStepDelay[2];
+  int bussardStepDirection[2];
+  static unsigned long lastBussardStep[2] = { millis(), millis() };
 
   //  read the button state
   boolean buttonRead = digitalRead(warpButtonPin);
@@ -291,18 +311,43 @@ void engines() {
         engineState = IMPULSE_DISENGAGE;
       } else if ((engineState == WARP) || (engineState == WARP_ENGAGE)) {
         engineState = WARP_DISENGAGE;
+        //                 // setup speed fade variables for changing to impulse.
+        // for (int i = 0; i < 2; i++) {
+        //   //  Avoid divide by zero error
+        //   if (currentBussardPeriod[i] - bussardImpulsePeriods[i] == 0) {
+        //     bussardStepDelay[i] = (fadeMaxValue * fadeStepDelays[WARP_OFF]);
+        //     bussardStepDirection[i] = 0;
+        //   } else {
+        //     //  GOING TO IMPULSE
+        //     // Calculate step delay and direction for on and off time steps.
+        //     ////  /// //////// ///                   Total time              /   number of steps
+        //     // // // ///    //     //   //      (#fadeSteps * fadeStepDelays[WARP_OFF]) /  (current period - warpPeriod)
+        //     bussardStepDelay[i] = (fadeMaxValue * fadeStepDelays[WARP_OFF]) / (abs(currentBussardPeriod[i] - bussardImpulsePeriods[i]));
+        //     bussardStepDirection[i] = (currentBussardPeriod[i] - bussardImpulsePeriods[i]) > 0 ? -1 : 1;
+        //   }
+        // }
       } else if (engineState == ENGINE_OFF) {
         engineState = IMPULSE_ENGAGE;
+        //         // setup speed fade variables for changing to impulse.
+        // for (int i = 0; i < 2; i++) {
+        //   //  Avoid divide by zero error
+        //   if (currentBussardPeriod[i] - bussardImpulsePeriods[i] == 0) {
+        //     bussardStepDelay[i] = (fadeMaxValue * fadeStepDelays[IMPULSE_ON]);
+        //     bussardStepDirection[i] = 0;
+        //   } else {
+        //     //  GOING TO IMPULSE
+        //     // Calculate step delay and direction for on and off time steps.
+        //     ////  /// //////// ///                   Total time              /   number of steps
+        //     // // // ///    //     //   //      (#fadeSteps * fadeStepDelay) /  (current period - warpPeriod)
+        //     bussardStepDelay[i] = (fadeMaxValue * fadeStepDelays[IMPULSE_ON]) / (abs(currentBussardPeriod[i] - bussardImpulsePeriods[i]));
+        //     bussardStepDirection[i] = (currentBussardPeriod[i] - bussardImpulsePeriods[i]) > 0 ? -1 : 1;
+        //   }
+        // }
       }
     }
     lastButtonState = newButtonState;
   }
 
-  static unsigned long lastFadeChange = millis();
-  unsigned long currentTime = millis();
-
-  static byte impulseFadeVal = 0;
-  static byte warpFadeVal = 0;
 
 
 
@@ -313,6 +358,10 @@ void engines() {
         digitalWrite(impulseLightPin, LOW);
         digitalWrite(warpLightPin, LOW);
         bussardOn = false;
+
+        for (int i = 0; i < 2; i++) {
+          currentBussardPeriod[i] = 0;
+        }
         break;
       }
     case IMPULSE_ENGAGE:
@@ -325,17 +374,17 @@ void engines() {
           if (impulseFadeVal == fadeMaxValue) {
             engineState = IMPULSE;
             bussardOn = true;
-            bussardOnPeriod = 250;
-            bussardOffPeriod = 5;
           }
         }
+
         break;
       }
     case IMPULSE:
       {
         bussardOn = true;
-        bussardOnPeriod = 200;
-        bussardOffPeriod = 150;
+        for (int i = 0; i < 2; i++) {
+          currentBussardPeriod[i] = bussardImpulsePeriods[i];
+        }
         break;
       }
     case IMPULSE_DISENGAGE:
@@ -351,6 +400,21 @@ void engines() {
               killingEngine = false;
             } else {
               engineState = WARP_ENGAGE;
+              // setup speed fade variables for changing to warp.
+              for (int i = 0; i < 2; i++) {
+                //  Avoid divide by zero error
+                if (currentBussardPeriod[i] - bussardWarpPeriods[i] == 0) {
+                  bussardStepDelay[i] = (fadeMaxValue * fadeStepDelays[WARP_ON]);
+                  bussardStepDirection[i] = 0;
+                } else {
+                  //  GOING IMPULSE TO WARP
+                  // Calculate step delay and direction for on and off time steps.
+                  ////  /// //////// ///                   Total time              /   number of steps
+                  // // // ///    //     //   //      (#fadeSteps * fadeStepDelay) /  (current period - warpPeriod)
+                  bussardStepDelay[i] = (fadeMaxValue * fadeStepDelays[WARP_ON]) / (abs(currentBussardPeriod[i] - bussardWarpPeriods[i]));
+                  bussardStepDirection[i] = (currentBussardPeriod[i] - bussardWarpPeriods[i]) > 0 ? -1 : 1;
+                }
+              }
             }
           }
         }
@@ -358,7 +422,7 @@ void engines() {
       }
     case WARP_ENGAGE:
       {
-        // fade up the warp
+        // fade up the warp light
         if (currentTime - lastFadeChange >= fadeStepDelays[WARP_ON]) {
           lastFadeChange = millis();
           warpFadeVal++;
@@ -366,8 +430,13 @@ void engines() {
           if (warpFadeVal == fadeMaxValue) {
             engineState = WARP;
             bussardOn = true;
-            bussardOnPeriod = 250;
-            bussardOffPeriod = 5;
+          }
+        }
+        // fade style code for the Bussard Light Times:
+        for (int i = 0; i < 2; i++) {
+          if (currentTime - lastBussardStep[i] >= bussardStepDelay[i]) {
+            lastBussardStep[i] = currentTime;
+            currentBussardPeriod[i] += bussardStepDirection[i];
           }
         }
         break;
@@ -375,8 +444,9 @@ void engines() {
     case WARP:
       {
         bussardOn = true;
-        bussardOnPeriod = 100;
-        bussardOffPeriod = 1;
+        for (int i = 0; i < 2; i++) {
+          currentBussardPeriod[i] = bussardWarpPeriods[i];
+        }
         break;
       }
     case WARP_DISENGAGE:
@@ -403,13 +473,13 @@ void engines() {
   // Cycle the Bussard Lights:
   if (bussardOn) {
     // If the light is lit and has been long enough to turn off
-    if ((bussardLit) && (currentTime - lastBussardUpdate >= bussardOnPeriod)) {
+    if ((bussardLit) && (currentTime - lastBussardUpdate >= currentBussardPeriod[1])) {
       bussardLit = false;
       digitalWrite(bussardLightPins[currentLight], LOW);
       lastBussardUpdate = currentTime;
     }
     // if light is off and has been long enough to turn on
-    if ((!bussardLit) && (currentTime - lastBussardUpdate >= bussardOffPeriod)) {
+    if ((!bussardLit) && (currentTime - lastBussardUpdate >= currentBussardPeriod[0])) {
       bussardLit = true;
       // Next light
       currentLight = (currentLight + 1) % 4;
